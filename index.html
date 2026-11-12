@@ -2,38 +2,72 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Allow emoji status</title>
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://telegram.org/js/telegram-web-app.js?59"></script>
 <style>
   :root { color-scheme: light dark; }
   body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-         font-family: -apple-system, system-ui, sans-serif; background: var(--tg-theme-bg-color, #fff);
+         font-family: -apple-system, system-ui, Roboto, sans-serif; background: var(--tg-theme-bg-color, #fff);
          color: var(--tg-theme-text-color, #000); padding: 16px; box-sizing: border-box; text-align: center; }
   .card { max-width: 360px; }
   h1 { font-size: 22px; margin: 0 0 8px; }
   p { color: var(--tg-theme-hint-color, #777); line-height: 1.4; }
-  button { margin-top: 16px; padding: 12px 20px; border: 0; border-radius: 12px; font-size: 16px;
+  button { margin-top: 16px; padding: 14px 24px; border: 0; border-radius: 12px; font-size: 17px; cursor: pointer;
            background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); }
+  button:disabled { opacity: .5; }
+  small { display: block; margin-top: 28px; font-size: 12px; color: var(--tg-theme-hint-color, #999); }
 </style>
 </head>
 <body>
 <div class="card">
   <h1 id="t">🔑 Allow emoji status</h1>
-  <p id="m">Confirm the permission so the bot can rotate the emoji status next to your name.</p>
-  <button id="b">Allow access</button>
+  <p id="m">Tap the button and confirm the permission so the bot can rotate the emoji status next to your name.</p>
+  <button id="b" type="button">Allow access</button>
+  <small id="d"></small>
 </div>
 <script>
-  const tg = window.Telegram.WebApp, t = document.getElementById('t'), m = document.getElementById('m'), b = document.getElementById('b');
-  tg.ready(); tg.expand();
-  function ask() {
-    if (!tg.requestEmojiStatusAccess) { t.textContent = '⚠️ Update Telegram'; m.textContent = 'This Telegram version is too old for emoji status access.'; return; }
-    tg.requestEmojiStatusAccess(function (ok) {
-      if (ok) { t.textContent = '✅ Access granted'; m.textContent = 'Go back to the bot and tap ▶️ Start.'; b.textContent = 'Close'; b.onclick = () => tg.close(); setTimeout(() => tg.close(), 1500); }
-      else { t.textContent = '❌ Not allowed'; m.textContent = 'Without the permission the carousel cannot change your status. Tap the button to try again.'; }
-    });
+(function () {
+  var tg = window.Telegram && window.Telegram.WebApp;
+  var t = document.getElementById('t'), m = document.getElementById('m'), b = document.getElementById('b'), d = document.getElementById('d');
+  function set(title, text) { t.textContent = title; m.textContent = text; }
+  function done(ok) {
+    if (ok) {
+      set('✅ Access granted', 'Go back to the bot and tap ▶️ Start.');
+      b.textContent = 'Close'; b.disabled = false; b.onclick = function () { tg.close(); };
+      setTimeout(function () { try { tg.close(); } catch (e) {} }, 1500);
+    } else {
+      set('❌ Not allowed', 'Without the permission the carousel cannot change your status. Tap the button to try again.');
+      b.textContent = 'Try again'; b.disabled = false;
+    }
   }
-  b.onclick = ask; ask();
+  if (!tg || !tg.initData) {
+    set('Open this page from Telegram', 'The «🔑 Allow access» button in the bot opens it inside Telegram, where the permission can be granted.');
+    b.style.display = 'none';
+    return;
+  }
+  tg.ready(); tg.expand();
+  d.textContent = 'Telegram ' + tg.platform + ' · Web App API ' + tg.version;
+  var supported = typeof tg.requestEmojiStatusAccess === 'function' && tg.isVersionAtLeast && tg.isVersionAtLeast('8.0');
+  if (!supported) {
+    set('⚠️ Update Telegram', 'This Telegram version is too old for emoji-status access (Web App API 8.0+ is needed). Update the app and try again.');
+    b.style.display = 'none';
+    return;
+  }
+  var waiting = false;
+  tg.onEvent('emojiStatusAccessRequested', function (ev) { waiting = false; done(!!(ev && ev.status === 'allowed')); });
+  b.onclick = function () {
+    if (waiting) return;
+    waiting = true; b.disabled = true; b.textContent = 'Waiting for Telegram…';
+    try {
+      tg.requestEmojiStatusAccess(function (ok) { waiting = false; done(!!ok); });
+    } catch (e) {
+      waiting = false; b.disabled = false; b.textContent = 'Allow access';
+      set('⚠️ Error', String(e && e.message || e));
+    }
+    setTimeout(function () { if (waiting) { waiting = false; b.disabled = false; b.textContent = 'Allow access'; m.textContent = 'No answer from Telegram. Tap again, or update the app.'; } }, 15000);
+  };
+})();
 </script>
 </body>
 </html>
